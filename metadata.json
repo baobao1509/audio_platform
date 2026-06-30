@@ -1,0 +1,6 @@
+{
+  "name": "Synchronized Audio Room",
+  "description": "A real-time synchronized audio sharing room where participants can join a Google Meet-style virtual space and listen to audio in sync with the admin.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
