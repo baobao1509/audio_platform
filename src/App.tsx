@@ -10,6 +10,8 @@ import {
   ShieldAlert,
   HelpCircle,
   Sparkles,
+  MessageSquare,
+  X,
 } from "lucide-react";
 
 import { Room, DefaultTrack, Participant } from "./types";
@@ -56,6 +58,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [isCopied, setIsCopied] = useState(false);
   const [isCopiedLink, setIsCopiedLink] = useState(false);
+  const [isChatOpenMobile, setIsChatOpenMobile] = useState(false);
 
   // Fetch preset tracks from the server on mount
   useEffect(() => {
@@ -478,18 +481,81 @@ export default function App() {
         </div>
 
         {/* RIGHT COLUMN: Chat Room & Members Panel */}
-        <div className="lg:col-span-1 h-full min-h-[500px] lg:min-h-0">
+        <div className="hidden lg:block lg:col-span-1 h-full min-h-[600px]">
           <ChatPanel room={roomState} userId={userId} onSendMessage={handleSendMessage} />
         </div>
       </main>
 
+      {/* Mobile Chat Toggle Button */}
+      <div className="lg:hidden fixed bottom-6 right-6 z-40">
+        <button
+          onClick={() => setIsChatOpenMobile(!isChatOpenMobile)}
+          className="flex items-center gap-2 px-5 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-2xl shadow-indigo-950 border border-white/10 active:scale-95 transition-all"
+        >
+          {isChatOpenMobile ? <X className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
+          <span className="text-xs font-semibold">
+            {isChatOpenMobile ? "Đóng chat" : "Trò chuyện"}
+          </span>
+          {roomState.chatMessages.length > 0 && !isChatOpenMobile && (
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-pink-500" />
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Mobile Chat Bottom Sheet Drawer */}
+      <AnimatePresence>
+        {isChatOpenMobile && (
+          <>
+            {/* Backdrop layer */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsChatOpenMobile(false)}
+              className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            />
+
+            {/* Bottom Sheet wrapper */}
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 220 }}
+              className="lg:hidden fixed bottom-0 left-0 right-0 h-[75vh] bg-[#09090f] border-t border-white/10 rounded-t-3xl z-50 flex flex-col overflow-hidden shadow-[0_-15px_40px_-15px_rgba(0,0,0,0.8)]"
+            >
+              {/* Top drag handler/header bar */}
+              <div className="flex items-center justify-between px-6 py-3.5 border-b border-white/5 bg-black/40">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-indigo-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300">Trò chuyện & Thành viên</span>
+                </div>
+                <button
+                  onClick={() => setIsChatOpenMobile(false)}
+                  className="p-1 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4.5 h-4.5" />
+                </button>
+              </div>
+
+              {/* Chat Panel component */}
+              <div className="flex-1 min-h-0 p-4 bg-black/20">
+                <ChatPanel room={roomState} userId={userId} onSendMessage={handleSendMessage} />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* SIDE ADVICE FOOTER */}
-      <footer className="bg-black/40 backdrop-blur-md border-t border-white/5 px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] uppercase tracking-wider text-white/30 font-mono z-10 relative">
+      <footer className="bg-black/40 backdrop-blur-md border-t border-white/5 px-6 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] uppercase tracking-wider text-white/30 font-mono z-10 relative">
         <div className="flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-          <span><b>Hệ thống:</b> Hoạt động ổn định • Trễ ước tính: ~12ms • Giao thức Delta-Sync v1.0.2</span>
+          <span><b>Hệ thống:</b> Hoạt động ổn định • Trễ: ~12ms</span>
         </div>
-        <span>SyncAudio Room • Thiết kế Immersive Pro</span>
+        <span>SyncAudio • Immersive Pro</span>
       </footer>
     </div>
   );

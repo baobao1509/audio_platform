@@ -34,7 +34,7 @@ export default function ChatPanel({ room, userId, onSendMessage }: ChatPanelProp
   const activeParticipants = Object.values(room.participants);
 
   return (
-    <div className="glass-dark border border-white/5 rounded-2xl h-[500px] lg:h-full flex flex-col overflow-hidden shadow-xl">
+    <div className="glass-dark border border-white/5 rounded-2xl h-full flex flex-col overflow-hidden shadow-xl">
       {/* Sidebar Navigation Tabs */}
       <div className="flex border-b border-white/5 bg-black/25 p-2 gap-1.5">
         <button
