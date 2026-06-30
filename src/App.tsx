@@ -351,11 +351,13 @@ export default function App() {
   const isAudioPlaying = roomState.audioState?.isPlaying || false;
 
   return (
-    <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 overflow-x-hidden relative">
+    <div className="min-h-screen lg:h-screen lg:max-h-screen bg-[#050508] text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 overflow-x-hidden lg:overflow-hidden relative">
       {/* Immersive Background Radial Gradients & Glow overlays */}
-      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,_#1a1a2e_0%,_#050508_100%)] pointer-events-none z-0" />
-      <div className="glow glow-indigo top-[-200px] left-[-150px] w-[600px] h-[600px] z-0" />
-      <div className="glow glow-pink bottom-[-200px] right-[-150px] w-[600px] h-[600px] z-0" />
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_#1a1a2e_0%,_#050508_100%)]" />
+        <div className="glow glow-indigo top-[-200px] left-[-150px] w-[600px] h-[600px]" />
+        <div className="glow glow-pink bottom-[-200px] right-[-150px] w-[600px] h-[600px]" />
+      </div>
 
       {/* HEADER BAR */}
       <header className="bg-black/30 backdrop-blur-xl border-b border-white/5 px-6 py-4.5 flex flex-col sm:flex-row items-center justify-between gap-4 z-10 shadow-lg relative">
@@ -421,7 +423,7 @@ export default function App() {
       </header>
 
       {/* MAIN SCREEN GRID */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden min-h-0 relative z-10">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden lg:overflow-hidden min-h-0 lg:max-h-[calc(100vh-140px)] relative z-10">
         
         {/* LEFT / CENTER COLUMN: Video Meet grid + Audio synchronizer */}
         <div className="lg:col-span-2 flex flex-col gap-6 overflow-y-auto pr-0 lg:pr-1 min-h-0">
@@ -481,7 +483,7 @@ export default function App() {
         </div>
 
         {/* RIGHT COLUMN: Chat Room & Members Panel */}
-        <div className="hidden lg:block lg:col-span-1 h-full min-h-[600px]">
+        <div className="hidden lg:block lg:col-span-1 h-full min-h-0">
           <ChatPanel room={roomState} userId={userId} onSendMessage={handleSendMessage} />
         </div>
       </main>
@@ -541,8 +543,8 @@ export default function App() {
               </div>
 
               {/* Chat Panel component */}
-              <div className="flex-1 min-h-0 p-4 bg-black/20">
-                <ChatPanel room={roomState} userId={userId} onSendMessage={handleSendMessage} />
+              <div className="flex-1 min-h-0 p-2 bg-black/25">
+                <ChatPanel room={roomState} userId={userId} onSendMessage={handleSendMessage} isMobileVariant={true} />
               </div>
             </motion.div>
           </>

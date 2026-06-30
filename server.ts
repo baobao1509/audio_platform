@@ -484,23 +484,16 @@ async function startServer() {
 
       delete room.participants[userId];
       
-      const activeParticipantsCount = Object.keys(room.participants).length;
-      
-      if (activeParticipantsCount === 0) {
-        console.log(`[Room Disbanded] Last participant left Room ${roomId}. Deleting room.`);
-        await deleteRoomState(roomId);
-      } else {
-        // If the admin leaves, we do NOT delete the room immediately. This allows reconnecting / page refreshing.
-        // We set room.adminId to null if the leaving user was the admin, so someone else can claim or they can re-claim.
-        if (room.adminId === userId) {
-          room.adminId = null;
-        }
-
-        await saveRoomState(roomId, {
-          participants: room.participants,
-          adminId: room.adminId
-        });
+      // If the admin leaves, we do NOT delete the room immediately. This allows reconnecting / page refreshing.
+      // We set room.adminId to null if the leaving user was the admin, so someone else can claim or they can re-claim.
+      if (room.adminId === userId) {
+        room.adminId = null;
       }
+
+      await saveRoomState(roomId, {
+        participants: room.participants,
+        adminId: room.adminId
+      });
     }
     res.json({ success: true });
   });
@@ -713,7 +706,7 @@ async function startServer() {
     }
   });
 
-  // Periodic Cleanup of inactive participants
+  // Periodic Cleanup of inactive participants (rooms are kept forever)
   setInterval(async () => {
     const now = Date.now();
     let roomsToClean: string[] = [];
@@ -733,7 +726,7 @@ async function startServer() {
       const room = await getRoomState(roomId);
       if (!room) continue;
 
-      // 1. Clean up stale/inactive participants who haven't pinged in 60 seconds (generous for tab backgrounding/throttling)
+      // Clean up stale/inactive participants who haven't pinged in 60 seconds (generous for tab backgrounding/throttling)
       let hasChanges = false;
       Object.keys(room.participants).forEach((userId) => {
         const participant = room.participants[userId];
@@ -752,15 +745,6 @@ async function startServer() {
           participants: room.participants,
           adminId: room.adminId
         });
-      }
-
-      // 2. Room removal logic: Disband immediately if there are 0 participants (after a 60-second safety grace window for brand-new rooms)
-      const activeParticipantsCount = Object.keys(room.participants).length;
-      const age = now - (room.createdAt || now);
-
-      if (activeParticipantsCount === 0 && age > 60000) {
-        console.log(`[Room Disbanded on Autoclean] Room ${roomId}: No users remaining. Deleting room.`);
-        await deleteRoomState(roomId);
       }
     }
   }, 5000);

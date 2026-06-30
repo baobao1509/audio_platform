@@ -6,9 +6,10 @@ interface ChatPanelProps {
   room: Room;
   userId: string;
   onSendMessage: (text: string) => void;
+  isMobileVariant?: boolean;
 }
 
-export default function ChatPanel({ room, userId, onSendMessage }: ChatPanelProps) {
+export default function ChatPanel({ room, userId, onSendMessage, isMobileVariant = false }: ChatPanelProps) {
   const [activeTab, setActiveTab] = useState<"chat" | "users">("chat");
   const [messageText, setMessageText] = useState("");
   
@@ -34,7 +35,7 @@ export default function ChatPanel({ room, userId, onSendMessage }: ChatPanelProp
   const activeParticipants = Object.values(room.participants);
 
   return (
-    <div className="glass-dark border border-white/5 rounded-2xl h-full flex flex-col overflow-hidden shadow-xl">
+    <div className={`h-full flex flex-col overflow-hidden ${isMobileVariant ? "" : "glass-dark border border-white/5 rounded-2xl shadow-xl"}`}>
       {/* Sidebar Navigation Tabs */}
       <div className="flex border-b border-white/5 bg-black/25 p-2 gap-1.5">
         <button
