@@ -438,7 +438,7 @@ async function startServer() {
     
     // Check if the current room has an active admin
     const activeAdminExists = Object.values(room.participants).some(
-      (p) => p.role === "admin" && (now - p.lastSeen) < 12000 && p.id !== userId
+      (p) => p.role === "admin" && (now - p.lastSeen) < 30000 && p.id !== userId
     );
 
     if (assignedRole === "admin" && activeAdminExists) {
@@ -732,7 +732,7 @@ async function startServer() {
 
       if (room.adminId) {
         const adminParticipant = room.participants[room.adminId];
-        if (!adminParticipant || (now - adminParticipant.lastSeen > 12000)) {
+        if (!adminParticipant || (now - adminParticipant.lastSeen > 30000)) {
           // Admin exists in definition but is not in participants list, or has timed out
           shouldDisband = true;
         }
@@ -757,7 +757,7 @@ async function startServer() {
       let hasChanges = false;
       Object.keys(room.participants).forEach((userId) => {
         const participant = room.participants[userId];
-        if (now - participant.lastSeen > 12000) {
+        if (now - participant.lastSeen > 30000) {
           console.log(`[User Left due to Timeout] Room ${roomId}: ${participant.name}`);
           delete room.participants[userId];
           hasChanges = true;
