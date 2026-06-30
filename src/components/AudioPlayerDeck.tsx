@@ -31,7 +31,13 @@ export default function AudioPlayerDeck({
   defaultTracks,
 }: AudioPlayerDeckProps) {
   const isAdmin = room.adminId === userId;
-  const audioState = room.audioState;
+  const audioState = room.audioState || {
+    url: "",
+    name: "",
+    isPlaying: false,
+    currentTime: 0,
+    lastUpdated: Date.now()
+  };
 
   // Local state
   const [volume, setVolume] = useState(0.8);

@@ -10,8 +10,24 @@ import bcrypt from "bcryptjs";
 dotenv.config();
 
 // Admin credentials from environment variables (overridable without exposing in source files)
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME ;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ;
+const getAdminUsername = (): string => {
+  const val = process.env.ADMIN_USERNAME;
+  if (typeof val === "string" && val.trim() !== "" && val !== "undefined") {
+    return val;
+  }
+  return "myadminaccount";
+};
+
+const getAdminPassword = (): string => {
+  const val = process.env.ADMIN_PASSWORD;
+  if (typeof val === "string" && val.trim() !== "" && val !== "undefined") {
+    return val;
+  }
+  return "adminpassword!@#";
+};
+
+const ADMIN_USERNAME = getAdminUsername();
+const ADMIN_PASSWORD = getAdminPassword();
 
 
 // Define TypeScript structures for static types
@@ -197,7 +213,13 @@ async function getRoomState(roomId: string): Promise<Room | null> {
       return {
         id: roomObj.id,
         participants,
-        audioState: roomObj.audioState,
+        audioState: roomObj.audioState || {
+          url: "",
+          name: "",
+          isPlaying: false,
+          currentTime: 0,
+          lastUpdated: Date.now()
+        },
         chatMessages: roomObj.chatMessages || [],
         adminId: roomObj.adminId,
         createdAt: roomObj.createdAt || Date.now(),
@@ -255,7 +277,13 @@ async function saveRoomState(roomId: string, roomData: Partial<Room>): Promise<R
       const room: Room = {
         id: roomObj.id,
         participants,
-        audioState: roomObj.audioState,
+        audioState: roomObj.audioState || {
+          url: "",
+          name: "",
+          isPlaying: false,
+          currentTime: 0,
+          lastUpdated: Date.now()
+        },
         chatMessages: roomObj.chatMessages || [],
         adminId: roomObj.adminId,
         createdAt: roomObj.createdAt || Date.now(),

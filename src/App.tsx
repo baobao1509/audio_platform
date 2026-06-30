@@ -247,14 +247,21 @@ export default function App() {
       // Optimistically update the local roomState so the UI changes instantly for the Admin
       setRoomState((prev) => {
         if (!prev) return prev;
+        const currentAudioState = prev.audioState || {
+          url: "",
+          name: "",
+          isPlaying: false,
+          currentTime: 0,
+          lastUpdated: Date.now()
+        };
         return {
           ...prev,
           audioState: {
-            ...prev.audioState,
+            ...currentAudioState,
             isPlaying,
             currentTime,
-            url: url !== undefined ? url : prev.audioState.url,
-            name: name !== undefined ? name : prev.audioState.name,
+            url: url !== undefined ? url : currentAudioState.url,
+            name: name !== undefined ? name : currentAudioState.name,
             lastUpdated: Date.now(),
           },
         };
@@ -339,7 +346,7 @@ export default function App() {
   }
 
   const activeParticipants = Object.values(roomState.participants) as Participant[];
-  const isAudioPlaying = roomState.audioState.isPlaying;
+  const isAudioPlaying = roomState.audioState?.isPlaying || false;
 
   return (
     <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 overflow-x-hidden relative">
