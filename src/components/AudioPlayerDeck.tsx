@@ -48,6 +48,7 @@ export default function AudioPlayerDeck({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "drift">("synced");
   const [uploadedFiles, setUploadedFiles] = useState<{ fileName: string; name: string; url: string; size: number; createdAt: number }[]>([]);
+  const [needInteraction, setNeedInteraction] = useState(false);
 
   const fetchUploadedFiles = async () => {
     if (!isAdmin) return;
@@ -148,8 +149,10 @@ export default function AudioPlayerDeck({
           setSyncStatus("syncing");
           audio.play().then(() => {
             setSyncStatus("synced");
+            setNeedInteraction(false);
           }).catch((err) => {
             console.warn("Auto-play blocked or failed:", err);
+            setNeedInteraction(true);
           });
         }
       } else {
@@ -326,6 +329,18 @@ export default function AudioPlayerDeck({
     return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
   };
 
+  const handleManualUnlock = () => {
+    if (!audioRef.current) return;
+    audioRef.current.play()
+      .then(() => {
+        setNeedInteraction(false);
+        setSyncStatus("synced");
+      })
+      .catch((err) => {
+        console.error("Manual play unlock failed:", err);
+      });
+  };
+
   return (
     <div className="glass-dark border border-white/5 rounded-2xl p-6 shadow-xl relative overflow-hidden">
       {/* Hidden native audio element */}
@@ -460,9 +475,20 @@ export default function AudioPlayerDeck({
               )}
             </button>
           ) : (
-            <div className="px-4 py-2.5 bg-white/3 border border-white/10 text-white/40 font-mono rounded-xl text-xs flex items-center gap-2">
-              <Disc className={`w-3.5 h-3.5 ${audioState.isPlaying ? "animate-spin" : ""}`} />
-              <span>{audioState.isPlaying ? "Đang phát chung..." : "Đang tạm dừng"}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {needInteraction && audioState.isPlaying && (
+                <button
+                  onClick={handleManualUnlock}
+                  className="px-4 py-2.5 bg-gradient-to-r from-pink-500 to-indigo-600 hover:from-pink-400 hover:to-indigo-500 active:scale-95 transition-all text-white font-semibold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-indigo-950/50 animate-pulse"
+                >
+                  <Volume2 className="w-3.5 h-3.5 text-white" />
+                  <span>Chạm để bật âm thanh</span>
+                </button>
+              )}
+              <div className="px-4 py-2.5 bg-white/3 border border-white/10 text-white/40 font-mono rounded-xl text-xs flex items-center gap-2">
+                <Disc className={`w-3.5 h-3.5 ${audioState.isPlaying ? "animate-spin" : ""}`} />
+                <span>{audioState.isPlaying ? "Đang phát chung..." : "Đang tạm dừng"}</span>
+              </div>
             </div>
           )}
         </div>
