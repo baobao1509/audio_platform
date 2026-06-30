@@ -4,9 +4,15 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import mongoose from "mongoose";
 import * as dotenv from "dotenv";
+import bcrypt from "bcryptjs";
 
 // Load environment variables from .env file
 dotenv.config();
+
+// Admin credentials from environment variables (overridable without exposing in source files)
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME ;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ;
+
 
 // Define TypeScript structures for static types
 interface Participant {
@@ -39,6 +45,7 @@ interface Room {
   audioState: AudioState;
   chatMessages: ChatMessage[];
   adminId: string | null;
+  createdAt?: number;
 }
 
 // In-memory rooms storage (used as cache or as active store if MongoDB is not present)
@@ -67,9 +74,10 @@ let useMongoDB = false;
 if (MONGODB_URI) {
   console.log("🔌 Attempting connection to MongoDB Atlas...");
   mongoose.connect(MONGODB_URI)
-    .then(() => {
+    .then(async () => {
       console.log("🔌 Connected to MongoDB Atlas successfully!");
       useMongoDB = true;
+      await seedAdminUser();
     })
     .catch((err) => {
       console.error("❌ Failed to connect to MongoDB Atlas:", err);
@@ -110,9 +118,47 @@ const RoomSchema = new mongoose.Schema({
   audioState: { type: AudioStateSchema, required: true },
   chatMessages: { type: [ChatMessageSchema], default: [] },
   adminId: { type: String, default: null },
+  createdAt: { type: Number, default: Date.now },
 });
 
 const RoomModel = mongoose.models.Room || mongoose.model("Room", RoomSchema);
+
+const AdminSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+});
+
+const AdminModel = mongoose.models.Admin || mongoose.model("Admin", AdminSchema);
+
+// In-memory admin password hash fallback for offline/in-memory mode
+let inMemoryAdminHash = "";
+
+async function initializeSecurity() {
+  try {
+    inMemoryAdminHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+  } catch (err) {
+    console.error("Failed to initialize in-memory security:", err);
+  }
+}
+
+async function seedAdminUser() {
+  if (!useMongoDB) return;
+  try {
+    const adminExists = await (AdminModel as any).findOne({ username: ADMIN_USERNAME });
+    if (!adminExists) {
+      const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
+      await (AdminModel as any).create({
+        username: ADMIN_USERNAME,
+        password: hashedPassword,
+      });
+      console.log(`🌱 [Seed] Default admin account '${ADMIN_USERNAME}' created successfully in MongoDB.`);
+    } else {
+      console.log(`🌱 [Seed] Admin account '${ADMIN_USERNAME}' already exists in MongoDB.`);
+    }
+  } catch (err) {
+    console.error("❌ Failed to seed default admin user:", err);
+  }
+}
 
 // --- Abstracted Room State Fetching & Syncing Helpers ---
 async function getRoomState(roomId: string): Promise<Room | null> {
@@ -154,6 +200,7 @@ async function getRoomState(roomId: string): Promise<Room | null> {
         audioState: roomObj.audioState,
         chatMessages: roomObj.chatMessages || [],
         adminId: roomObj.adminId,
+        createdAt: roomObj.createdAt || Date.now(),
       };
     } catch (err) {
       console.error(`[MongoDB error fetching room ${roomId}]:`, err);
@@ -211,6 +258,7 @@ async function saveRoomState(roomId: string, roomData: Partial<Room>): Promise<R
         audioState: roomObj.audioState,
         chatMessages: roomObj.chatMessages || [],
         adminId: roomObj.adminId,
+        createdAt: roomObj.createdAt || Date.now(),
       };
 
       // Keep local in-memory store in sync as a cache
@@ -229,7 +277,57 @@ async function saveRoomState(roomId: string, roomData: Partial<Room>): Promise<R
   return null;
 }
 
+async function deleteRoomState(roomId: string): Promise<void> {
+  if (useMongoDB) {
+    try {
+      await (RoomModel as any).deleteOne({ id: roomId });
+      console.log(`[MongoDB Deleted Room] ${roomId}`);
+    } catch (err) {
+      console.error(`[MongoDB error deleting room ${roomId}]:`, err);
+    }
+  }
+  if (rooms[roomId]) {
+    delete rooms[roomId];
+    console.log(`[Memory Deleted Room] ${roomId}`);
+  }
+}
+
+async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const username = req.headers["x-admin-username"];
+  const password = req.headers["x-admin-password"];
+
+  if (!username || !password || typeof username !== "string" || typeof password !== "string") {
+    return res.status(401).json({ error: "Yêu cầu tài khoản Admin hợp lệ để thực hiện thao tác này." });
+  }
+
+  try {
+    if (useMongoDB) {
+      const admin = await (AdminModel as any).findOne({ username });
+      if (admin) {
+        const matches = await bcrypt.compare(password, admin.password);
+        if (matches) {
+          return next();
+        }
+      }
+    } else {
+      // Fallback in-memory mode using inMemoryAdminHash
+      if (username === ADMIN_USERNAME) {
+        const matches = await bcrypt.compare(password, inMemoryAdminHash);
+        if (matches) {
+          return next();
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[Auth Error]:", err);
+    return res.status(500).json({ error: "Lỗi hệ thống khi xác thực tài khoản." });
+  }
+
+  return res.status(401).json({ error: "Tài khoản hoặc mật khẩu Admin không chính xác." });
+}
+
 async function startServer() {
+  await initializeSecurity();
   const app = express();
   const PORT = 3000;
 
@@ -254,7 +352,7 @@ async function startServer() {
   });
 
   // Create a new room
-  app.post("/api/rooms", async (req, res) => {
+  app.post("/api/rooms", requireAdmin, async (req, res) => {
     const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
     const newRoom: Room = {
       id: roomId,
@@ -267,7 +365,8 @@ async function startServer() {
         lastUpdated: Date.now()
       },
       chatMessages: [],
-      adminId: null
+      adminId: null,
+      createdAt: Date.now()
     };
 
     if (useMongoDB) {
@@ -354,25 +453,17 @@ async function startServer() {
     const room = await getRoomState(roomId);
     if (room && userId) {
       console.log(`[User Left] Room ${roomId}: ${room.participants[userId]?.name || userId}`);
-      delete room.participants[userId];
 
       if (room.adminId === userId) {
-        const remaining = Object.values(room.participants);
-        if (remaining.length > 0) {
-          remaining.sort((a, b) => a.joinedAt - b.joinedAt);
-          const newAdmin = remaining[0];
-          newAdmin.role = "admin";
-          room.adminId = newAdmin.id;
-          console.log(`[Admin Promoted on Leave] Room ${roomId}: ${newAdmin.name} is now Admin`);
-        } else {
-          room.adminId = null;
-        }
+        console.log(`[Room Disbanded] Admin left Room ${roomId}. Deleting room.`);
+        await deleteRoomState(roomId);
+      } else {
+        delete room.participants[userId];
+        await saveRoomState(roomId, {
+          participants: room.participants,
+          adminId: room.adminId
+        });
       }
-
-      await saveRoomState(roomId, {
-        participants: room.participants,
-        adminId: room.adminId
-      });
     }
     res.json({ success: true });
   });
@@ -452,7 +543,7 @@ async function startServer() {
   });
 
   // Binary stream audio file upload
-  app.post("/api/upload", (req, res) => {
+  app.post("/api/upload", requireAdmin, (req, res) => {
     const roomId = req.query.roomId as string;
     const fileName = (req.query.fileName as string) || "audio_file.mp3";
 
@@ -539,7 +630,7 @@ async function startServer() {
   });
 
   // Delete specific uploaded file
-  app.delete("/api/uploads/:fileName", (req, res) => {
+  app.delete("/api/uploads/:fileName", requireAdmin, (req, res) => {
     try {
       const { fileName } = req.params;
       const filePath = path.join(uploadsDir, fileName);
@@ -563,7 +654,7 @@ async function startServer() {
   });
 
   // Clear all uploaded files
-  app.delete("/api/uploads", (req, res) => {
+  app.delete("/api/uploads", requireAdmin, (req, res) => {
     try {
       if (!fs.existsSync(uploadsDir)) {
         return res.json({ success: true, message: "Thư mục tải lên trống." });
@@ -605,40 +696,45 @@ async function startServer() {
       const room = await getRoomState(roomId);
       if (!room) continue;
 
-      let hasChanges = false;
-      let adminActive = false;
+      const participantsList = Object.values(room.participants);
+      const createdAt = room.createdAt || now;
 
+      // Determine if the room should be deleted (disbanded) because the admin left or timed out
+      let shouldDisband = false;
+
+      if (room.adminId) {
+        const adminParticipant = room.participants[room.adminId];
+        if (!adminParticipant || (now - adminParticipant.lastSeen > 12000)) {
+          // Admin exists in definition but is not in participants list, or has timed out
+          shouldDisband = true;
+        }
+      } else {
+        // No adminId set.
+        if (participantsList.length > 0) {
+          // There are participants, but no admin. This means admin has left or timed out.
+          shouldDisband = true;
+        } else if (now - createdAt > 30000) {
+          // No participants at all, and room was created more than 30 seconds ago.
+          shouldDisband = true;
+        }
+      }
+
+      if (shouldDisband) {
+        console.log(`[Room Disbanded on Autoclean] Room ${roomId}: Admin is inactive, left, or room is abandoned. Deleting room.`);
+        await deleteRoomState(roomId);
+        continue;
+      }
+
+      // If the room is not disbanded, clean up inactive listeners (normal participants)
+      let hasChanges = false;
       Object.keys(room.participants).forEach((userId) => {
         const participant = room.participants[userId];
-        // If participant hasn't pinged in 12 seconds, remove them
         if (now - participant.lastSeen > 12000) {
           console.log(`[User Left due to Timeout] Room ${roomId}: ${participant.name}`);
           delete room.participants[userId];
           hasChanges = true;
-        } else {
-          if (participant.role === "admin") {
-            adminActive = true;
-          }
         }
       });
-
-      // If official admin was cleaned up or isn't active, promote someone else
-      if (!adminActive || !room.adminId || !room.participants[room.adminId]) {
-        const remaining = Object.values(room.participants);
-        if (remaining.length > 0) {
-          remaining.sort((a, b) => a.joinedAt - b.joinedAt);
-          const newAdmin = remaining[0];
-          newAdmin.role = "admin";
-          room.adminId = newAdmin.id;
-          hasChanges = true;
-          console.log(`[Admin Promoted on Autoclean] Room ${roomId}: ${newAdmin.name} is now Admin`);
-        } else {
-          if (room.adminId !== null) {
-            room.adminId = null;
-            hasChanges = true;
-          }
-        }
-      }
 
       if (hasChanges) {
         await saveRoomState(roomId, {

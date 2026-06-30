@@ -4,7 +4,7 @@ import { Music, Radio, LogIn, Sparkles } from "lucide-react";
 
 interface LandingPageProps {
   onJoinRoom: (roomId: string, name: string, role: "admin" | "listener") => void;
-  onCreateRoom: (name: string) => void;
+  onCreateRoom: (name: string, adminUsername?: string, adminPassword?: string) => void;
   error?: string;
 }
 
@@ -13,16 +13,27 @@ export default function LandingPage({ onJoinRoom, onCreateRoom, error }: Landing
   const [roomIdInput, setRoomIdInput] = useState("");
   const [role, setRole] = useState<"admin" | "listener">("listener");
   const [isJoining, setIsJoining] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [inputError, setInputError] = useState("");
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setInputError("Vui lòng nhập tên của bạn trước khi tạo phòng.");
       return;
     }
+    if (!adminUsername.trim()) {
+      setInputError("Vui lòng nhập tài khoản Admin.");
+      return;
+    }
+    if (!adminPassword) {
+      setInputError("Vui lòng nhập mật khẩu Admin.");
+      return;
+    }
     setInputError("");
-    onCreateRoom(name.trim());
+    onCreateRoom(name.trim(), adminUsername.trim(), adminPassword);
   };
 
   const handleJoin = (e: React.FormEvent) => {
@@ -108,13 +119,21 @@ export default function LandingPage({ onJoinRoom, onCreateRoom, error }: Landing
         {/* Action Tabs */}
         <div className="grid grid-cols-2 gap-4 mb-8 border-b border-white/5 pb-6">
           {/* Create Room Tab Box */}
-          <div className="flex flex-col justify-between">
-            <div className="mb-3 text-xs text-white/40 text-center font-mono uppercase tracking-wider">
+          <div className="flex flex-col gap-2">
+            <div className="text-xs text-white/40 text-center font-mono uppercase tracking-wider">
               Bắt đầu phòng mới
             </div>
             <button
-              onClick={handleCreate}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] transition-all text-white font-semibold rounded-xl text-sm shadow-md shadow-indigo-950/50 flex items-center justify-center gap-2"
+              onClick={() => {
+                setIsCreating(true);
+                setIsJoining(false);
+                setInputError("");
+              }}
+              className={`w-full py-3 active:scale-[0.98] transition-all font-semibold rounded-xl text-sm flex items-center justify-center gap-2 border ${
+                isCreating 
+                  ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-950/50" 
+                  : "bg-white/5 hover:bg-white/10 text-slate-200 border-white/10"
+              }`}
             >
               <Music className="w-4 h-4" />
               Tạo phòng mới
@@ -127,14 +146,85 @@ export default function LandingPage({ onJoinRoom, onCreateRoom, error }: Landing
               Tham gia phòng có sẵn
             </div>
             <button
-              onClick={() => setIsJoining(true)}
-              className="w-full py-3 bg-white/5 hover:bg-white/10 active:scale-[0.98] transition-all text-slate-200 font-semibold rounded-xl text-sm flex items-center justify-center gap-2 border border-white/10"
+              onClick={() => {
+                setIsJoining(true);
+                setIsCreating(false);
+                setInputError("");
+              }}
+              className={`w-full py-3 active:scale-[0.98] transition-all font-semibold rounded-xl text-sm flex items-center justify-center gap-2 border ${
+                isJoining 
+                  ? "bg-pink-600 text-white border-pink-500 shadow-md shadow-pink-950/50" 
+                  : "bg-white/5 hover:bg-white/10 text-slate-200 border-white/10"
+              }`}
             >
               <LogIn className="w-4 h-4" />
               Vào phòng đã có
             </button>
           </div>
         </div>
+
+        {/* Create Room Form Overlay */}
+        {isCreating && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            className="border-t border-slate-800 pt-6 mt-2"
+          >
+            <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+              <Music className="w-4 h-4 text-indigo-400" />
+              Đăng nhập Admin để Tạo Phòng
+            </h3>
+            <form onSubmit={handleCreateSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 font-mono">
+                  Tài khoản Admin:
+                </label>
+                <input
+                  type="text"
+                  value={adminUsername}
+                  onChange={(e) => {
+                    setAdminUsername(e.target.value);
+                    setInputError("");
+                  }}
+                  placeholder="myadminaccount"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 rounded-xl transition-all duration-200 text-slate-100 placeholder-slate-600 text-sm font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 font-mono">
+                  Mật khẩu Admin:
+                </label>
+                <input
+                  type="password"
+                  value={adminPassword}
+                  onChange={(e) => {
+                    setAdminPassword(e.target.value);
+                    setInputError("");
+                  }}
+                  placeholder="••••••••••••"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 rounded-xl transition-all duration-200 text-slate-100 placeholder-slate-600 text-sm font-medium"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreating(false)}
+                  className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-slate-300 font-medium rounded-xl text-sm transition-all"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl text-sm shadow-md shadow-indigo-950/50 transition-all"
+                >
+                  Xác nhận & Tạo
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        )}
 
         {/* Join Room Modal/Form Overlay when clicking "Join" */}
         {isJoining && (

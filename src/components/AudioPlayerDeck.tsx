@@ -69,11 +69,15 @@ export default function AudioPlayerDeck({
     try {
       const response = await fetch(`/api/uploads/${encodeURIComponent(fileName)}`, {
         method: "DELETE",
+        headers: {
+          "x-admin-username": localStorage.getItem("sync_audio_admin_username") || "",
+          "x-admin-password": localStorage.getItem("sync_audio_admin_password") || "",
+        }
       });
       if (response.ok) {
         fetchUploadedFiles();
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         alert(errorData.error || "Không thể xóa tệp.");
       }
     } catch (err) {
@@ -88,11 +92,15 @@ export default function AudioPlayerDeck({
     try {
       const response = await fetch("/api/uploads", {
         method: "DELETE",
+        headers: {
+          "x-admin-username": localStorage.getItem("sync_audio_admin_username") || "",
+          "x-admin-password": localStorage.getItem("sync_audio_admin_password") || "",
+        }
       });
       if (response.ok) {
         fetchUploadedFiles();
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         alert(errorData.error || "Không thể xóa sạch các tệp.");
       }
     } catch (err) {
@@ -262,13 +270,16 @@ export default function AudioPlayerDeck({
         body: file,
         headers: {
           "Content-Type": "application/octet-stream",
+          "x-admin-username": localStorage.getItem("sync_audio_admin_username") || "",
+          "x-admin-password": localStorage.getItem("sync_audio_admin_password") || "",
         },
       });
 
       setUploadProgress(70);
 
       if (!response.ok) {
-        throw new Error("Lỗi máy chủ khi tải tệp.");
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Lỗi máy chủ khi tải tệp.");
       }
 
       const data = await response.json();

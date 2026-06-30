@@ -166,7 +166,7 @@ export default function App() {
   }, [roomId, name, role, userId]);
 
   // Handle Create Room
-  const handleCreateRoom = async (userName: string) => {
+  const handleCreateRoom = async (userName: string, adminUsername?: string, adminPassword?: string) => {
     try {
       setError("");
       setName(userName);
@@ -174,11 +174,23 @@ export default function App() {
 
       const response = await fetch("/api/rooms", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-admin-username": adminUsername || "",
+          "x-admin-password": adminPassword || ""
+        },
       });
 
-      if (!response.ok) throw new Error("Tạo phòng thất bại.");
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Tạo phòng thất bại.");
+      }
       const data = await response.json();
+
+      if (adminUsername && adminPassword) {
+        localStorage.setItem("sync_audio_admin_username", adminUsername);
+        localStorage.setItem("sync_audio_admin_password", adminPassword);
+      }
 
       setRole("admin");
       setRoomId(data.roomId);
