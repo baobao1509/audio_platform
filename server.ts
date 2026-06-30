@@ -482,11 +482,20 @@ async function startServer() {
     if (room && userId) {
       console.log(`[User Left] Room ${roomId}: ${room.participants[userId]?.name || userId}`);
 
-      if (room.adminId === userId) {
-        console.log(`[Room Disbanded] Admin left Room ${roomId}. Deleting room.`);
+      delete room.participants[userId];
+      
+      const activeParticipantsCount = Object.keys(room.participants).length;
+      
+      if (activeParticipantsCount === 0) {
+        console.log(`[Room Disbanded] Last participant left Room ${roomId}. Deleting room.`);
         await deleteRoomState(roomId);
       } else {
-        delete room.participants[userId];
+        // If the admin leaves, we do NOT delete the room immediately. This allows reconnecting / page refreshing.
+        // We set room.adminId to null if the leaving user was the admin, so someone else can claim or they can re-claim.
+        if (room.adminId === userId) {
+          room.adminId = null;
+        }
+
         await saveRoomState(roomId, {
           participants: room.participants,
           adminId: room.adminId
@@ -724,42 +733,16 @@ async function startServer() {
       const room = await getRoomState(roomId);
       if (!room) continue;
 
-      const participantsList = Object.values(room.participants);
-      const createdAt = room.createdAt || now;
-
-      // Determine if the room should be deleted (disbanded) because the admin left or timed out
-      let shouldDisband = false;
-
-      if (room.adminId) {
-        const adminParticipant = room.participants[room.adminId];
-        if (!adminParticipant || (now - adminParticipant.lastSeen > 30000)) {
-          // Admin exists in definition but is not in participants list, or has timed out
-          shouldDisband = true;
-        }
-      } else {
-        // No adminId set.
-        if (participantsList.length > 0) {
-          // There are participants, but no admin. This means admin has left or timed out.
-          shouldDisband = true;
-        } else if (now - createdAt > 30000) {
-          // No participants at all, and room was created more than 30 seconds ago.
-          shouldDisband = true;
-        }
-      }
-
-      if (shouldDisband) {
-        console.log(`[Room Disbanded on Autoclean] Room ${roomId}: Admin is inactive, left, or room is abandoned. Deleting room.`);
-        await deleteRoomState(roomId);
-        continue;
-      }
-
-      // If the room is not disbanded, clean up inactive listeners (normal participants)
+      // 1. Clean up stale/inactive participants who haven't pinged in 60 seconds (generous for tab backgrounding/throttling)
       let hasChanges = false;
       Object.keys(room.participants).forEach((userId) => {
         const participant = room.participants[userId];
-        if (now - participant.lastSeen > 30000) {
+        if (now - participant.lastSeen > 60000) {
           console.log(`[User Left due to Timeout] Room ${roomId}: ${participant.name}`);
           delete room.participants[userId];
+          if (room.adminId === userId) {
+            room.adminId = null;
+          }
           hasChanges = true;
         }
       });
@@ -769,6 +752,15 @@ async function startServer() {
           participants: room.participants,
           adminId: room.adminId
         });
+      }
+
+      // 2. Room removal logic: Disband immediately if there are 0 participants (after a 60-second safety grace window for brand-new rooms)
+      const activeParticipantsCount = Object.keys(room.participants).length;
+      const age = now - (room.createdAt || now);
+
+      if (activeParticipantsCount === 0 && age > 60000) {
+        console.log(`[Room Disbanded on Autoclean] Room ${roomId}: No users remaining. Deleting room.`);
+        await deleteRoomState(roomId);
       }
     }
   }, 5000);
