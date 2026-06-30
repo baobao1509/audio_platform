@@ -145,25 +145,9 @@ export default function App() {
     // Start 750ms interval loop for rapid state syncing
     const interval = setInterval(syncRoom, 750);
 
-    const handleUnload = () => {
-      if (roomId && userId) {
-        fetch(`/api/rooms/${roomId}/leave`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId }),
-          keepalive: true,
-        });
-      }
-    };
-
-    window.addEventListener("beforeunload", handleUnload);
-    window.addEventListener("pagehide", handleUnload);
-
     return () => {
       isSubscribed = false;
       clearInterval(interval);
-      window.removeEventListener("beforeunload", handleUnload);
-      window.removeEventListener("pagehide", handleUnload);
     };
   }, [roomId, name, role, userId]);
 

@@ -436,18 +436,23 @@ async function startServer() {
     const now = Date.now();
     let assignedRole: "admin" | "listener" = role || "listener";
     
-    // Check if the current room has an active admin
-    const activeAdminExists = Object.values(room.participants).some(
-      (p) => p.role === "admin" && (now - p.lastSeen) < 30000 && p.id !== userId
-    );
-
-    if (assignedRole === "admin" && activeAdminExists) {
-      assignedRole = "listener";
-    }
-
-    if (!activeAdminExists && !room.adminId) {
+    // Force admin role if the user's ID matches the registered room admin ID
+    if (room.adminId === userId) {
       assignedRole = "admin";
-      room.adminId = userId;
+    } else {
+      // Check if the current room has an active admin (within a generous 5-hour window for backgrounding)
+      const activeAdminExists = Object.values(room.participants).some(
+        (p) => p.role === "admin" && (now - p.lastSeen) < 18000000 && p.id !== userId
+      );
+
+      if (assignedRole === "admin" && activeAdminExists) {
+        assignedRole = "listener";
+      }
+
+      if (!activeAdminExists && !room.adminId) {
+        assignedRole = "admin";
+        room.adminId = userId;
+      }
     }
 
     if (assignedRole === "admin") {
@@ -484,16 +489,22 @@ async function startServer() {
 
       delete room.participants[userId];
       
-      // If the admin leaves, we do NOT delete the room immediately. This allows reconnecting / page refreshing.
-      // We set room.adminId to null if the leaving user was the admin, so someone else can claim or they can re-claim.
-      if (room.adminId === userId) {
-        room.adminId = null;
-      }
+      const activeParticipantsCount = Object.keys(room.participants).length;
 
-      await saveRoomState(roomId, {
-        participants: room.participants,
-        adminId: room.adminId
-      });
+      if (activeParticipantsCount === 0) {
+        console.log(`[Room Disbanded] Last participant left Room ${roomId}. Deleting room.`);
+        await deleteRoomState(roomId);
+      } else {
+        // If the admin leaves, we set room.adminId to null so someone else can claim or they can re-claim.
+        if (room.adminId === userId) {
+          room.adminId = null;
+        }
+
+        await saveRoomState(roomId, {
+          participants: room.participants,
+          adminId: room.adminId
+        });
+      }
     }
     res.json({ success: true });
   });
@@ -511,7 +522,7 @@ async function startServer() {
     // Security check: Only let the official admin sync state
     if (room.adminId !== userId) {
       const adminInRoom = room.participants[room.adminId || ""];
-      const isStale = !adminInRoom || (Date.now() - adminInRoom.lastSeen) > 15000;
+      const isStale = !adminInRoom || (Date.now() - adminInRoom.lastSeen) > 18000000;
       
       if (!isStale) {
         return res.status(403).json({ error: "Chỉ quản trị viên mới có thể điều khiển âm thanh." });
@@ -726,11 +737,11 @@ async function startServer() {
       const room = await getRoomState(roomId);
       if (!room) continue;
 
-      // Clean up stale/inactive participants who haven't pinged in 60 seconds (generous for tab backgrounding/throttling)
+      // Clean up stale/inactive participants who haven't pinged in 5 hours (extremely generous to support backgrounding/sleeping/lecturing)
       let hasChanges = false;
       Object.keys(room.participants).forEach((userId) => {
         const participant = room.participants[userId];
-        if (now - participant.lastSeen > 60000) {
+        if (now - participant.lastSeen > 18000000) {
           console.log(`[User Left due to Timeout] Room ${roomId}: ${participant.name}`);
           delete room.participants[userId];
           if (room.adminId === userId) {
@@ -740,7 +751,13 @@ async function startServer() {
         }
       });
 
-      if (hasChanges) {
+      const activeParticipantsCount = Object.keys(room.participants).length;
+      const age = now - (room.createdAt || now);
+
+      if (activeParticipantsCount === 0 && age > 18000000) {
+        console.log(`[Room Disbanded on Autoclean] Room ${roomId}: No users remaining for over 5 hours. Deleting room.`);
+        await deleteRoomState(roomId);
+      } else if (hasChanges) {
         await saveRoomState(roomId, {
           participants: room.participants,
           adminId: room.adminId
