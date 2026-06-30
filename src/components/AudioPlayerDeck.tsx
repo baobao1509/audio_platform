@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
+import { globalAudio } from "../lib/audio";
 
 interface AudioPlayerDeckProps {
   room: Room;
@@ -48,7 +49,6 @@ export default function AudioPlayerDeck({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "drift">("synced");
   const [uploadedFiles, setUploadedFiles] = useState<{ fileName: string; name: string; url: string; size: number; createdAt: number }[]>([]);
-  const [needInteraction, setNeedInteraction] = useState(false);
 
   const fetchUploadedFiles = async () => {
     if (!isAdmin) return;
@@ -117,15 +117,14 @@ export default function AudioPlayerDeck({
   };
 
   // Refs for tracking
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const isRemoteChangeRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Initialize and load audio url
   useEffect(() => {
-    if (!audioRef.current) return;
+    if (!globalAudio) return;
     
-    const audio = audioRef.current;
+    const audio = globalAudio;
     if (audio.src !== audioState.url) {
       console.log(`[Audio] Loading new source: ${audioState.url}`);
       isRemoteChangeRef.current = true;
@@ -134,12 +133,44 @@ export default function AudioPlayerDeck({
     }
   }, [audioState.url]);
 
+  // Handle local audio events & cleanup via event listeners
+  useEffect(() => {
+    if (!globalAudio) return;
+
+    const onTimeUpdate = () => {
+      setCurrentTime(globalAudio.currentTime);
+    };
+
+    const onLoadedMetadata = () => {
+      setDuration(globalAudio.duration || 0);
+    };
+
+    const onEnded = () => {
+      if (isAdmin) {
+        onSyncState(false, 0); // Reset on end
+      }
+    };
+
+    globalAudio.addEventListener("timeupdate", onTimeUpdate);
+    globalAudio.addEventListener("loadedmetadata", onLoadedMetadata);
+    globalAudio.addEventListener("ended", onEnded);
+
+    // Initial sync
+    setCurrentTime(globalAudio.currentTime);
+    setDuration(globalAudio.duration || 0);
+
+    return () => {
+      globalAudio.removeEventListener("timeupdate", onTimeUpdate);
+      globalAudio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      globalAudio.removeEventListener("ended", onEnded);
+    };
+  }, [isAdmin, onSyncState]);
+
   // Synchronize play/pause and time updates from room state
   useEffect(() => {
-    if (!audioRef.current || isAdmin) return; // Admin is the master source of truth; do not sync local player to broadcasted roomState
-    const audio = audioRef.current;
+    if (!globalAudio || isAdmin) return; // Admin is the master source of truth; do not sync local player to broadcasted roomState
+    const audio = globalAudio;
 
-    // Skip if admin is editing timeline (to prevent jumping while the admin seeks)
     const handleRemoteSync = () => {
       // 1. Synchronize Play/Pause
       if (audioState.isPlaying) {
@@ -149,10 +180,8 @@ export default function AudioPlayerDeck({
           setSyncStatus("syncing");
           audio.play().then(() => {
             setSyncStatus("synced");
-            setNeedInteraction(false);
           }).catch((err) => {
             console.warn("Auto-play blocked or failed:", err);
-            setNeedInteraction(true);
           });
         }
       } else {
@@ -187,23 +216,12 @@ export default function AudioPlayerDeck({
     };
 
     handleRemoteSync();
-  }, [audioState.isPlaying, audioState.currentTime, audioState.lastUpdated]);
-
-  // Handle local audio events
-  const handleTimeUpdate = () => {
-    if (!audioRef.current) return;
-    setCurrentTime(audioRef.current.currentTime);
-  };
-
-  const handleLoadedMetadata = () => {
-    if (!audioRef.current) return;
-    setDuration(audioRef.current.duration || 0);
-  };
+  }, [audioState.isPlaying, audioState.currentTime, audioState.lastUpdated, isAdmin]);
 
   // When admin initiates Play
   const handlePlayToggle = () => {
-    if (!audioRef.current || !isAdmin) return;
-    const audio = audioRef.current;
+    if (!globalAudio || !isAdmin) return;
+    const audio = globalAudio;
 
     const nextPlaying = !audioState.isPlaying;
 
@@ -219,11 +237,11 @@ export default function AudioPlayerDeck({
 
   // When admin seeks
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!audioRef.current || !isAdmin) return;
+    if (!globalAudio || !isAdmin) return;
     const targetValue = parseFloat(e.target.value);
     
     isRemoteChangeRef.current = false;
-    audioRef.current.currentTime = targetValue;
+    globalAudio.currentTime = targetValue;
     setCurrentTime(targetValue);
     
     // Broadcast immediately
@@ -235,21 +253,21 @@ export default function AudioPlayerDeck({
     const val = parseFloat(e.target.value);
     setVolume(val);
     setIsMuted(val === 0);
-    if (audioRef.current) {
-      audioRef.current.volume = val;
-      audioRef.current.muted = val === 0;
+    if (globalAudio) {
+      globalAudio.volume = val;
+      globalAudio.muted = val === 0;
     }
   };
 
   const toggleMute = () => {
-    if (!audioRef.current) return;
+    if (!globalAudio) return;
     const nextMute = !isMuted;
     setIsMuted(nextMute);
-    audioRef.current.muted = nextMute;
+    globalAudio.muted = nextMute;
     if (nextMute) {
-      audioRef.current.volume = 0;
+      globalAudio.volume = 0;
     } else {
-      audioRef.current.volume = volume;
+      globalAudio.volume = volume;
     }
   };
 
@@ -329,32 +347,8 @@ export default function AudioPlayerDeck({
     return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
   };
 
-  const handleManualUnlock = () => {
-    if (!audioRef.current) return;
-    audioRef.current.play()
-      .then(() => {
-        setNeedInteraction(false);
-        setSyncStatus("synced");
-      })
-      .catch((err) => {
-        console.error("Manual play unlock failed:", err);
-      });
-  };
-
   return (
     <div className="glass-dark border border-white/5 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-      {/* Hidden native audio element */}
-      <audio
-        ref={audioRef}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={() => {
-          if (isAdmin) {
-            onSyncState(false, 0); // Reset on end
-          }
-        }}
-      />
-
       {/* Decorative Aura */}
       <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/5 rounded-full filter blur-2xl pointer-events-none" />
 
@@ -475,20 +469,9 @@ export default function AudioPlayerDeck({
               )}
             </button>
           ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              {needInteraction && audioState.isPlaying && (
-                <button
-                  onClick={handleManualUnlock}
-                  className="px-4 py-2.5 bg-gradient-to-r from-pink-500 to-indigo-600 hover:from-pink-400 hover:to-indigo-500 active:scale-95 transition-all text-white font-semibold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-indigo-950/50 animate-pulse"
-                >
-                  <Volume2 className="w-3.5 h-3.5 text-white" />
-                  <span>Chạm để bật âm thanh</span>
-                </button>
-              )}
-              <div className="px-4 py-2.5 bg-white/3 border border-white/10 text-white/40 font-mono rounded-xl text-xs flex items-center gap-2">
-                <Disc className={`w-3.5 h-3.5 ${audioState.isPlaying ? "animate-spin" : ""}`} />
-                <span>{audioState.isPlaying ? "Đang phát chung..." : "Đang tạm dừng"}</span>
-              </div>
+            <div className="px-4 py-2.5 bg-white/3 border border-white/10 text-white/40 font-mono rounded-xl text-xs flex items-center gap-2">
+              <Disc className={`w-3.5 h-3.5 ${audioState.isPlaying ? "animate-spin" : ""}`} />
+              <span>{audioState.isPlaying ? "Đang phát chung..." : "Đang tạm dừng"}</span>
             </div>
           )}
         </div>

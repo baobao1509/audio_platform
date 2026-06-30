@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
 import { Music, Radio, LogIn, Sparkles } from "lucide-react";
+import { unlockAudio } from "../lib/audio";
 
 interface LandingPageProps {
   onJoinRoom: (roomId: string, name: string, role: "admin" | "listener") => void;
@@ -33,6 +34,7 @@ export default function LandingPage({ onJoinRoom, onCreateRoom, error }: Landing
       return;
     }
     setInputError("");
+    unlockAudio(); // Unlocks audio context synchronously on user click
     onCreateRoom(name.trim(), adminUsername.trim(), adminPassword);
   };
 
@@ -47,6 +49,7 @@ export default function LandingPage({ onJoinRoom, onCreateRoom, error }: Landing
       return;
     }
     setInputError("");
+    unlockAudio(); // Unlocks audio context synchronously on user click
     onJoinRoom(roomIdInput.trim().toUpperCase(), name.trim(), role);
   };
 
