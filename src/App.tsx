@@ -161,7 +161,6 @@ export default function App() {
       clearInterval(interval);
       window.removeEventListener("beforeunload", handleUnload);
       window.removeEventListener("pagehide", handleUnload);
-      handleUnload();
     };
   }, [roomId, name, role, userId]);
 
