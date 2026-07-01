@@ -272,31 +272,37 @@ export default function AudioPlayerDeck({
   };
 
   // File upload logic
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    const file = files[0];
-    if (!file.type.startsWith("audio/")) {
-      alert("Vui lòng tải lên file âm thanh hợp lệ (MP3, WAV, AAC, M4A...).");
-      return;
-    }
+    const formData = new FormData();
+    let validFileCount = 0;
 
-    if (file.size > 15 * 1024 * 1024) {
-      alert("Kích thước file tối đa là 15MB. Vui lòng thử file nhỏ hơn.");
-      return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith("audio/")) {
+        alert(`File ${file.name} không phải là file âm thanh hợp lệ.`);
+        continue;
+      }
+      if (file.size > 15 * 1024 * 1024) {
+        alert(`File ${file.name} quá lớn (tối đa 15MB).`);
+        continue;
+      }
+      formData.append("files", file);
+      validFileCount++;
     }
+    
+    if (validFileCount === 0) return;
 
     setIsUploading(true);
     setUploadProgress(20);
 
     try {
-      // Upload using raw binary upload streaming
-      const response = await fetch(`/api/upload?roomId=${roomId}&fileName=${encodeURIComponent(file.name)}`, {
+      // Upload using FormData
+      const response = await fetch(`/api/upload?roomId=${roomId}`, {
         method: "POST",
-        body: file,
+        body: formData,
         headers: {
-          "Content-Type": "application/octet-stream",
           "x-admin-username": localStorage.getItem("sync_audio_admin_username") || "",
           "x-admin-password": localStorage.getItem("sync_audio_admin_password") || "",
         },
@@ -309,12 +315,13 @@ export default function AudioPlayerDeck({
         throw new Error(errData.error || "Lỗi máy chủ khi tải tệp.");
       }
 
-      const data = await response.json();
+      const data = await response.json(); // data is array of uploaded files
       setUploadProgress(100);
 
-      // Successfully uploaded! Trigger a sync state with the new track info
-      console.log(`[Upload] File upload success: ${data.url}`);
-      onSyncState(false, 0, data.url, data.name);
+      // Successfully uploaded! Trigger a sync state with the last uploaded track
+      const lastTrack = data[data.length - 1];
+      console.log(`[Upload] File upload success: ${lastTrack.url}`);
+      onSyncState(false, 0, lastTrack.url, lastTrack.name);
       fetchUploadedFiles();
     } catch (err) {
       console.error("Upload error:", err);
@@ -533,7 +540,8 @@ export default function AudioPlayerDeck({
               ref={fileInputRef}
               type="file"
               accept="audio/*"
-              onChange={handleFileUpload}
+              multiple
+              onChange={(e) => handleFileUpload(e.target.files)}
               className="hidden"
             />
 
@@ -541,7 +549,7 @@ export default function AudioPlayerDeck({
               <div className="py-4 flex flex-col items-center justify-center gap-2">
                 <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
                 <p className="text-xs text-slate-300 font-semibold font-mono animate-pulse">
-                  Đang tải file lên phòng... {uploadProgress}%
+                  Đang tải các file lên phòng... {uploadProgress}%
                 </p>
                 <div className="w-full max-w-[200px] bg-slate-900 h-1 rounded-full overflow-hidden">
                   <div
@@ -553,14 +561,27 @@ export default function AudioPlayerDeck({
             ) : (
               <button
                 onClick={triggerFileInput}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.add("border-indigo-500", "bg-indigo-950/20");
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove("border-indigo-500", "bg-indigo-950/20");
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove("border-indigo-500", "bg-indigo-950/20");
+                  handleFileUpload(e.dataTransfer.files);
+                }}
                 className="w-full py-4 border border-dashed border-white/10 hover:border-indigo-500/50 bg-white/3 hover:bg-indigo-950/10 rounded-lg transition-all flex flex-col items-center justify-center gap-1.5 group"
               >
                 <UploadCloud className="w-5 h-5 text-white/30 group-hover:text-indigo-400 transition-colors" />
                 <span className="text-xs font-medium text-slate-300 group-hover:text-slate-100">
-                  Nhấp để tải file âm thanh của bạn lên phòng
+                  Nhấp hoặc kéo thả nhiều file âm thanh vào đây
                 </span>
                 <span className="text-[9px] text-white/30 font-mono">
-                  Hỗ trợ MP3, WAV, FLAC, M4A... (Tối đa 15MB)
+                  Hỗ trợ MP3, WAV, FLAC, M4A... (Tối đa 15MB/file)
                 </span>
               </button>
             )}

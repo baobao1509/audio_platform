@@ -5,6 +5,7 @@ import { createServer as createViteServer } from "vite";
 import mongoose from "mongoose";
 import * as dotenv from "dotenv";
 import bcrypt from "bcryptjs";
+import multer from "multer";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -243,7 +244,7 @@ async function saveRoomState(roomId: string, roomData: Partial<Room>): Promise<R
       const updatedDoc = await (RoomModel as any).findOneAndUpdate(
         { id: roomId },
         { $set: updateData },
-        { new: true, upsert: true }
+        { returnDocument: 'after', upsert: true }
       );
 
       const roomObj = updatedDoc.toObject();
@@ -368,6 +369,17 @@ async function startServer() {
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
+
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+      const safeFileName = `${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      cb(null, safeFileName);
+    }
+  });
+  const upload = multer({ storage });
 
   // Serve static uploads
   app.use("/uploads", express.static(uploadsDir));
@@ -583,48 +595,49 @@ async function startServer() {
     res.json(message);
   });
 
-  // Binary stream audio file upload
-  app.post("/api/upload", requireAdmin, (req, res) => {
+  // Upload audio files
+  app.post("/api/upload", requireAdmin, upload.array("files"), async (req, res) => {
     const roomId = req.query.roomId as string;
-    const fileName = (req.query.fileName as string) || "audio_file.mp3";
 
     if (!roomId) {
       return res.status(400).json({ error: "Phòng không hợp lệ hoặc không tồn tại." });
     }
 
-    const safeFileName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-    const filePath = path.join(uploadsDir, safeFileName);
-    const fileStream = fs.createWriteStream(filePath);
+    if (!req.files || (req.files as Express.Multer.File[]).length === 0) {
+      return res.status(400).json({ error: "Không có tệp nào được tải lên." });
+    }
 
-    req.pipe(fileStream);
+    const files = req.files as Express.Multer.File[];
+    const uploadedFiles = [];
 
-    fileStream.on("finish", async () => {
-      const publicUrl = `/uploads/${safeFileName}`;
+    const room = await getRoomState(roomId);
+
+    for (const file of files) {
+      const publicUrl = `/uploads/${file.filename}`;
+      uploadedFiles.push({
+        url: publicUrl,
+        name: file.originalname
+      });
       
-      const room = await getRoomState(roomId);
+      // Update room audio state to the last file uploaded (or handle as needed)
       if (room) {
         room.audioState = {
           url: publicUrl,
-          name: fileName,
+          name: file.originalname,
           isPlaying: false,
           currentTime: 0,
           lastUpdated: Date.now()
         };
-        await saveRoomState(roomId, {
-          audioState: room.audioState
-        });
       }
+    }
 
-      res.json({
-        url: publicUrl,
-        name: fileName
+    if (room) {
+      await saveRoomState(roomId, {
+        audioState: room.audioState
       });
-    });
+    }
 
-    fileStream.on("error", (err) => {
-      console.error("[Upload Error]:", err);
-      res.status(500).json({ error: "Tải tệp âm thanh lên thất bại." });
-    });
+    res.json(uploadedFiles);
   });
 
   // Get list of uploaded files
